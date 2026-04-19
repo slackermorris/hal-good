@@ -8,7 +8,7 @@ import {
   stepCountIs,
   streamText,
   tool,
-  type ModelMessage
+  type ModelMessage,
 } from "ai";
 import { z } from "zod";
 
@@ -29,7 +29,7 @@ function inlineDataUrls(messages: ModelMessage[]): ModelMessage[] {
         if (!match) return part;
         const bytes = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
         return { ...part, data: bytes, mediaType: match[1] };
-      })
+      }),
     };
   });
 }
@@ -44,14 +44,14 @@ export class ChatAgent extends AIChatAgent<Env> {
         if (result.authSuccess) {
           return new Response("<script>window.close();</script>", {
             headers: { "content-type": "text/html" },
-            status: 200
+            status: 200,
           });
         }
         return new Response(
           `Authentication Failed: ${result.authError || "Unknown error"}`,
-          { headers: { "content-type": "text/plain" }, status: 400 }
+          { headers: { "content-type": "text/plain" }, status: 400 },
         );
-      }
+      },
     });
   }
 
@@ -71,7 +71,7 @@ export class ChatAgent extends AIChatAgent<Env> {
 
     const result = streamText({
       model: workersai("@cf/moonshotai/kimi-k2.5", {
-        sessionAffinity: this.sessionAffinity
+        sessionAffinity: this.sessionAffinity,
       }),
       system: `You are a helpful assistant that can understand images. You can check the weather, get the user's timezone, run calculations, and schedule tasks. When users share images, describe what you see and answer questions about them.
 
@@ -81,68 +81,25 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       // Prune old tool calls to save tokens on long conversations
       messages: pruneMessages({
         messages: inlineDataUrls(await convertToModelMessages(this.messages)),
-        toolCalls: "before-last-2-messages"
+        toolCalls: "before-last-2-messages",
       }),
       tools: {
         // MCP tools from connected servers
         ...mcpTools,
 
-        // Server-side tool: runs automatically on the server
-        getWeather: tool({
-          description: "Get the current weather for a city",
+        dispatch_code_agent: tool({
+          description: "Delegate a coding task to the code sub-agent",
           inputSchema: z.object({
-            city: z.string().describe("City name")
+            repo: z.string(),
+            task: z.string(),
+            branch: z.string().optional(),
           }),
-          execute: async ({ city }) => {
-            // Replace with a real weather API in production
-            const conditions = ["sunny", "cloudy", "rainy", "snowy"];
-            const temp = Math.floor(Math.random() * 30) + 5;
-            return {
-              city,
-              temperature: temp,
-              condition:
-                conditions[Math.floor(Math.random() * conditions.length)],
-              unit: "celsius"
-            };
-          }
-        }),
-
-        // Client-side tool: no execute function — the browser handles it
-        getUserTimezone: tool({
-          description:
-            "Get the user's timezone from their browser. Use this when you need to know the user's local time.",
-          inputSchema: z.object({})
-        }),
-
-        // Approval tool: requires user confirmation before executing
-        calculate: tool({
-          description:
-            "Perform a math calculation with two numbers. Requires user approval for large numbers.",
-          inputSchema: z.object({
-            a: z.number().describe("First number"),
-            b: z.number().describe("Second number"),
-            operator: z
-              .enum(["+", "-", "*", "/", "%"])
-              .describe("Arithmetic operator")
-          }),
-          needsApproval: async ({ a, b }) =>
-            Math.abs(a) > 1000 || Math.abs(b) > 1000,
-          execute: async ({ a, b, operator }) => {
-            const ops: Record<string, (x: number, y: number) => number> = {
-              "+": (x, y) => x + y,
-              "-": (x, y) => x - y,
-              "*": (x, y) => x * y,
-              "/": (x, y) => x / y,
-              "%": (x, y) => x % y
-            };
-            if (operator === "/" && b === 0) {
-              return { error: "Division by zero" };
-            }
-            return {
-              expression: `${a} ${operator} ${b}`,
-              result: ops[operator](a, b)
-            };
-          }
+          execute: async ({ repo, task, branch }) => {
+            // 1. Look up agent config in D1 registry
+            // 2. Trigger Workers Workflow
+            // 3. Return acknowledgement string
+            return `On it — I've kicked off a code agent on \`${repo}\`. I'll notify you when the PR is up.`;
+          },
         }),
 
         scheduleTask: tool({
@@ -164,13 +121,13 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             if (!input) return "Invalid schedule type";
             try {
               this.schedule(input, "executeTask", description, {
-                idempotent: true
+                idempotent: true,
               });
               return `Task scheduled: "${description}" (${when.type}: ${input})`;
             } catch (error) {
               return `Error scheduling task: ${error}`;
             }
-          }
+          },
         }),
 
         getScheduledTasks: tool({
@@ -179,13 +136,13 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
           execute: async () => {
             const tasks = this.getSchedules();
             return tasks.length > 0 ? tasks : "No scheduled tasks found.";
-          }
+          },
         }),
 
         cancelScheduledTask: tool({
           description: "Cancel a scheduled task by its ID",
           inputSchema: z.object({
-            taskId: z.string().describe("The ID of the task to cancel")
+            taskId: z.string().describe("The ID of the task to cancel"),
           }),
           execute: async ({ taskId }) => {
             try {
@@ -194,11 +151,11 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             } catch (error) {
               return `Error cancelling task: ${error}`;
             }
-          }
-        })
+          },
+        }),
       },
       stopWhen: stepCountIs(5),
-      abortSignal: options?.abortSignal
+      abortSignal: options?.abortSignal,
     });
 
     return result.toUIMessageStreamResponse();
@@ -216,8 +173,8 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       JSON.stringify({
         type: "scheduled-task",
         description,
-        timestamp: new Date().toISOString()
-      })
+        timestamp: new Date().toISOString(),
+      }),
     );
   }
 }
@@ -228,5 +185,5 @@ export default {
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
     );
-  }
+  },
 } satisfies ExportedHandler<Env>;
