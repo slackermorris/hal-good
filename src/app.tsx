@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useState, useEffect, useRef } from "react";
+import { Suspense, useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { getToolName, isToolUIPart, type UIMessage } from "ai";
@@ -242,8 +242,22 @@ function Chat() {
   const [isAddingServer, setIsAddingServer] = useState(false);
   const mcpPanelRef = useRef<HTMLDivElement>(null);
 
+  // Ensure that each client uses a unique DO instance.
+  const agentName = useMemo(() => {
+    let stored = localStorage.getItem('agent-name');
+    if (stored) {
+      return stored;
+    }
+
+    stored = crypto.randomUUID();
+    localStorage.setItem('agent-name', stored)
+
+    return stored
+  }, [])
+
   const agent = useAgent<OrchestratorAgent>({
     agent: "OrchestratorAgent",
+    name: agentName,
     onOpen: useCallback(() => setConnected(true), []),
     onClose: useCallback(() => setConnected(false), []),
     onError: useCallback(
