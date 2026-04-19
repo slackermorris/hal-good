@@ -34,7 +34,7 @@ function inlineDataUrls(messages: ModelMessage[]): ModelMessage[] {
   });
 }
 
-export class ChatAgent extends AIChatAgent<Env> {
+export class OrchestratorAgent extends AIChatAgent<Env> {
   maxPersistedMessages = 100;
 
   onStart() {
